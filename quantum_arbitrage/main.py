@@ -6,7 +6,10 @@
 
 import numpy as np
 
-from quantum_arbitrage.implied_density_function import implied_density_function
+from plot_results import plot
+from problem import get_problem_formulation
+from solvers.classical_solver import breeden_litzenberger_solve_system, numpy_solve_system
+from solvers.dwave_solver import solve_qubo
 
 # Initial stock price
 S0 = 10
@@ -23,7 +26,14 @@ T = 3 / 12  # 3 months
 # Maturity increment
 delta_T = 1 / 12  # 1 month
 
-f = implied_density_function(S0, r, implied_vols, K, T, delta_K)
+Ki, S_T, A, C = get_problem_formulation(S0, r, implied_vols, K, T, delta_K)
+
+g = breeden_litzenberger_solve_system(Ki, delta_K, r, T, C)
+f = numpy_solve_system(A, C)
+
+q_f = solve_qubo(len(f), 2, A, C)
+
+plot(S_T, g, f)
 
 if all([x > 0 for x in f]):
     print('The implied density vectory is strictly positive: no arbitrage.')
