@@ -30,10 +30,9 @@ Ki, S_T, A, C = get_problem_formulation(S0, r, implied_vols, K, T, delta_K)
 
 g = breeden_litzenberger_solve_system(Ki, delta_K, r, T, C)
 f = numpy_solve_system(A, C)
+q_f = solve_qubo(len(f), 7, A, C, f, 100)
 
-q_f = solve_qubo(len(f), 2, A, C)
-
-plot(S_T, g, f)
+plot(S_T, g, f, q_f)
 
 if all([x > 0 for x in f]):
     print('The implied density vectory is strictly positive: no arbitrage.')

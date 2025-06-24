@@ -1,16 +1,16 @@
 import numpy as np
 import pandas as pd
 from dwave.samplers import SimulatedAnnealingSampler
+from tqdm import tqdm
 
 from quantum_arbitrage.solvers.dwaveutils.dwaveutils import bl_lstsq
 from quantum_arbitrage.solvers.dwaveutils.dwaveutils.utils import Binary2Float
 
 
-def solve_qubo(Dimension, qubits, A, b):
-    # 6 qubits with integer solutions
-    # x1 = q1 + 2q2 - 4q3
-    # x = {{-1}, {2}}
-    # mininum -26
+def solve_qubo(Dimension, qubits, A, b, true_x, scale):
+    A = [[col * scale for col in row] for row in A]
+    b = [el * scale for el in b]
+    true_x = [el * scale for el in true_x]
 
     QM = np.zeros(((qubits + 1) * Dimension, (qubits + 1) * Dimension))
     ### Linear terms ###
@@ -26,8 +26,9 @@ def solve_qubo(Dimension, qubits, A, b):
                 po1 = (qubits + 1) * i + l
                 QM[po1][po1] = QM[po1][po1] + cef1 - cef2
 
+    print('Generating first quadratic term...')
     ### First quadratic term ###
-    for k in range(Dimension):
+    for k in tqdm(range(Dimension)):
         for i in range(Dimension):
             for l in range(qubits):
                 qcef = pow(2, l + qubits + 1) * pow(A[k][i], 2)
@@ -41,8 +42,9 @@ def solve_qubo(Dimension, qubits, A, b):
                     po2 = (qubits + 1) * i + l2
                     QM[po1][po2] = QM[po1][po2] + qcef
 
+    print('\n\nGenerating second quadratic term...')
     ### Second quadratic term ###
-    for k in range(Dimension):
+    for k in tqdm(range(Dimension)):
         for i in range(Dimension - 1):
             for j in range(i + 1, Dimension):
                 qcef = pow(2, 2 * qubits + 1) * A[k][i] * A[k][j]
@@ -64,85 +66,41 @@ def solve_qubo(Dimension, qubits, A, b):
                         po2 = (qubits + 1) * j + l2
                         QM[po1][po2] = QM[po1][po2] + qcef
 
-    # Print Matrix Q
-    print("# Matrix Q is")
-    print(QM)
-    print("\nMinimum energy is ", -np.dot(b, b))
-    print("\n")
-
-    # Print Python code for the run in D-Wave quantum processing unit
-    print("Running code for D-Wave:\n")
-    print("from dwave.system import DWaveSampler, EmbeddingComposite")
-    print("sampler_auto = EmbeddingComposite(DWaveSampler(solver={'qpu': True}))\n")
-    print("linear = {", end="")
-    for i in range((qubits + 1) * Dimension - 1):
-        linear = i + 1
-        print("('q", linear, "','q", linear, "'):", format(QM[i][i]), sep='', end=", ")
-    print("('q", (qubits + 1) * Dimension, "','q", (qubits + 1) * Dimension, "'):",
-          format(QM[(qubits + 1) * Dimension - 1][(qubits + 1) * Dimension - 1]), "}", sep='')
-
-    print("\nquadratic = {", end="")
-    for i in range((qubits + 1) * Dimension - 1):
-        for j in range(i + 1, (qubits + 1) * Dimension):
-            qdrt1 = i + 1
-            qdrt2 = j + 1
-            if i == (qubits + 1) * Dimension - 2 and j == (qubits + 1) * Dimension - 1:
-                print("('q", qdrt1, "','q", qdrt2, "'):", format(QM[i][j]), "}", sep='')
-            else:
-                print("('q", qdrt1, "','q", qdrt2, "'):", format(QM[i][j]), sep='', end=", ")
-
-    print("\nQ = dict(linear)")
-    print("Q.update(quadratic)\n")
-
-    qa_iter = 1000
-    print("sampleset = sampler_auto.sample_qubo(Q, num_reads=", qa_iter, ")", sep="")
-    print("print(sampleset)")
-
     # sampler_auto = EmbeddingComposite(DWaveSampler(solver={'qpu': True}))
     sampler_auto = SimulatedAnnealingSampler()
 
-    linear = {('q1', 'q1'): 26.0, ('q2', 'q2'): 72.0, ('q3', 'q3'): 96.0, ('q4', 'q4'): -13.0, ('q5', 'q5'): -16.0,
-              ('q6', 'q6'): 152.0}
+    Q = {}
+    epsilon = 1e-10  # tiny bias to force inclusion
+    for i in range(QM.shape[0]):
+        # add linear term, if zero add epsilon
+        val = QM[i][i]
+        if val == 0:
+            val = epsilon
+        Q[(f'q{i}', f'q{i}')] = val
+        for j in range(i + 1, QM.shape[1]):
+            if QM[i][j] != 0:
+                Q[(f'q{i}', f'q{j}')] = QM[i][j]
 
-    quadratic = {('q1', 'q2'): 40.0, ('q1', 'q3'): -80.0, ('q1', 'q4'): 2.0, ('q1', 'q5'): 4.0, ('q1', 'q6'): -8.0,
-                 ('q2', 'q3'): -160.0, ('q2', 'q4'): 4.0, ('q2', 'q5'): 8.0, ('q2', 'q6'): -16.0, ('q3', 'q4'): -8.0,
-                 ('q3', 'q5'): -16.0, ('q3', 'q6'): 32.0, ('q4', 'q5'): 20.0, ('q4', 'q6'): -40.0, ('q5', 'q6'): -80.0}
-
-    Q = dict(linear)
-    Q.update(quadratic)
-
-    sampleset = sampler_auto.sample_qubo(Q, num_reads=1000)
-    print(sampleset)
-
-    # set the bit value to discrete the actual value as a fixed point
-    num_bits = 4
-    bit_value = bl_lstsq.get_bit_value(num_bits, fixed_point=True)
-    # discretized version of matrix `A`
-    A_discrete = bl_lstsq.discretize_matrix(A, bit_value)
+    print('\n\nSolving QUBO with Simulated annealing sampler...')
     # number of reads for Simulated annealing (SA) or Quantum annealing (QA)
     num_reads = 1000
+    sampleset = sampler_auto.sample_qubo(Q, num_reads=num_reads)
 
     # convert sampleset and its aggregate version to dataframe
     sampleset_pd = sampleset.to_pandas_dataframe()
     sampleset_pd_agg = sampleset.aggregate().to_pandas_dataframe()
     num_states = len(sampleset_pd_agg)
     num_x_entry = Dimension
-    num_q_entry = A_discrete.shape[1]
-    # concatenate `sampleset_pd` and `x_at_each_read`
-    x_at_each_read = pd.DataFrame(
-        np.row_stack(
-            [(sampleset_pd.iloc[i][:num_q_entry]).values.reshape(
-                (num_x_entry, -1)) @ bit_value
-             for i in range(num_reads)]
-        ),
-        columns=['x' + str(i) for i in range(num_x_entry)]
-    )
-    sampleset_pd = pd.concat([sampleset_pd, x_at_each_read], axis=1)
-    sampleset_pd.rename(
-        columns=lambda c: c if isinstance(c, str) else 'q' + str(c),
-        inplace=True
-    )
-    # concatnate `sampleset_pd_agg` and `x_at_each_state`
+    qubit_cols = [col for col in sampleset_pd.columns if col.startswith('q')]
+    num_q_entry = len(qubit_cols)
+
+    # set the bit value to discrete the actual value as a fixed point
+    num_bits = num_q_entry // Dimension
+    bit_value = bl_lstsq.get_bit_value(num_bits, fixed_point=True, sign="p")
+    # discretized version of matrix `A`
+    A_discrete = bl_lstsq.discretize_matrix(A, bit_value)
+
+    # concatenate `sampleset_pd_agg` and `x_at_each_state`
     x_at_each_state = pd.DataFrame(
         np.row_stack(
             [(sampleset_pd_agg.iloc[i][:num_q_entry]).values.reshape(
@@ -178,4 +136,41 @@ def solve_qubo(Dimension, qubits, A, b):
     ).sum() > 0.5  # bool
     expected_x_discrete = Binary2Float.to_fixed_point(np.array(tmp_q), bit_value)
 
-    return sampleset
+    true_b = b
+    print('=' * 50)
+    print('true A:', [[float(x) for x in row] for row in A])
+    print('true x:', [float(x) for x in true_x])
+    print('true b:', [float(x) for x in true_b])
+    print('bit value:', bit_value)
+
+    print('=' * 50)
+    print('# Simulated annealing/Quantum annealing')
+    print('lowest energy state x:')
+    print(lowest_x)
+    print('lowest energy state q:')
+    print(lowest_q)
+    print('b:', A @ lowest_x)
+    print('2-norm:', np.linalg.norm(A @ lowest_x - true_b))
+    print('-' * 50)
+    print('most frequently occurring x:')
+    print(frequent_x)
+    print('most frequently occurring q:')
+    print(frequent_q)
+    print('b:', A @ frequent_x)
+    print('2-norm:', np.linalg.norm(A @ frequent_x - true_b))
+    print('-' * 50)
+    print('expected x (from real value):')
+    print(expected_x)
+    print('b:', A @ expected_x)
+    print('2-norm:', np.linalg.norm(A @ expected_x - true_b))
+    print('-' * 50)
+    print('expected x (from discrete value):')
+    print(expected_x_discrete)
+    print('b:', A @ expected_x_discrete)
+    print('2-norm:', np.linalg.norm(A @ expected_x_discrete - true_b))
+    print('-' * 50)
+    print('Sample set:')
+    print(sampleset_pd_agg.sort_values('num_occurrences', ascending=False))
+    print('=' * 50)
+
+    return [x / scale for x in lowest_x]

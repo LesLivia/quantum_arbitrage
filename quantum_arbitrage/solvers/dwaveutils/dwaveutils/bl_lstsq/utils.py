@@ -24,11 +24,11 @@ def get_bit_value(num_bits: int, fixed_point: int = 0, sign: Literal["pn", "p", 
         sign = "pn"
 
     if sign == "pn":
-        return np.array([-(2 ** fixed_point) if i == 0 else 2.0 ** (fixed_point - i) for i in range(0, num_bits)])
+        return np.array([-(2 ** fixed_point) if i == 0 else 2.0 ** (fixed_point + i) for i in range(0, num_bits)])
     elif sign == "p":
-        return np.array([2.0 ** (fixed_point - i) for i in range(1, num_bits + 1)])
+        return np.array([2.0 ** (i/2) for i in range(0, num_bits)])
     else:
-        return np.array([-(2.0 ** (fixed_point - i)) for i in range(1, num_bits + 1)])
+        return np.array([-(2.0 ** (fixed_point + i)) for i in range(0, num_bits + 1)])
 
 
 def get_qubo(
