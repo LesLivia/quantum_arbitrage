@@ -12,7 +12,8 @@ def solve_qubo(Dimension, qubits, A, b, true_x, scale):
     true_b = np.array([el * scale for el in b])
     true_x = [el * scale for el in true_x]
     # Regularization (A⊤A+λI)x=A⊤b
-    lambda_reg = 1e-4  # or try 1e-2, 1e-4 depending on stability
+    # (also did not help)
+    lambda_reg = 1e-2  # or try 1e-2, 1e-4 depending on stability
     A = true_A.T @ true_A + lambda_reg * np.eye(true_A.shape[1])
     b = true_A.T @ true_b
 
@@ -175,6 +176,7 @@ def solve_qubo(Dimension, qubits, A, b, true_x, scale):
     print(sampleset_pd_agg.sort_values('num_occurrences', ascending=False))
     print('=' * 50)
 
+    # selecting the one with the lowest error (no help here either).
     results = [(lowest_x, np.linalg.norm(A @ lowest_x - true_b), 'lowest energy state x'),
                (frequent_x, np.linalg.norm(A @ frequent_x - true_b), 'most frequently occurring x'),
                (expected_x, np.linalg.norm(A @ expected_x - true_b), 'expected x (from real value)')]

@@ -31,7 +31,10 @@ Ki, S_T, A, C = get_problem_formulation(S0, r, implied_vols, K, T, delta_K)
 g = breeden_litzenberger_solve_system(Ki, delta_K, r, T, C)
 f = numpy_solve_system(A, C)
 avg_q_f = [0] * len(f)
-for i in range(1):
+N = 1
+# trying to average over N runs, but does not help.
+# (so setting N to 1 for now)
+for i in range(N):
     q_f = solve_qubo(len(f), 7, A, C, f, 100)
     for j in range(len(avg_q_f)):
         avg_q_f[j] = (avg_q_f[j] * i + q_f[j]) / (i + 1)
