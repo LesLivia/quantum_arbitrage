@@ -8,9 +8,13 @@ from quantum_arbitrage.solvers.dwaveutils.dwaveutils.utils import Binary2Float
 
 
 def solve_qubo(Dimension, qubits, A, b, true_x, scale):
-    A = [[col * scale for col in row] for row in A]
-    b = [el * scale for el in b]
+    true_A = np.array([[col * scale for col in row] for row in A])
+    true_b = np.array([el * scale for el in b])
     true_x = [el * scale for el in true_x]
+    # Regularization (A⊤A+λI)x=A⊤b
+    lambda_reg = 1e-4  # or try 1e-2, 1e-4 depending on stability
+    A = true_A.T @ true_A + lambda_reg * np.eye(true_A.shape[1])
+    b = true_A.T @ true_b
 
     QM = np.zeros(((qubits + 1) * Dimension, (qubits + 1) * Dimension))
     ### Linear terms ###
@@ -97,8 +101,6 @@ def solve_qubo(Dimension, qubits, A, b, true_x, scale):
     # set the bit value to discrete the actual value as a fixed point
     num_bits = num_q_entry // Dimension
     bit_value = bl_lstsq.get_bit_value(num_bits, fixed_point=True, sign="p")
-    # discretized version of matrix `A`
-    A_discrete = bl_lstsq.discretize_matrix(A, bit_value)
 
     # concatenate `sampleset_pd_agg` and `x_at_each_state`
     x_at_each_state = pd.DataFrame(
@@ -136,7 +138,7 @@ def solve_qubo(Dimension, qubits, A, b, true_x, scale):
     ).sum() > 0.5  # bool
     expected_x_discrete = Binary2Float.to_fixed_point(np.array(tmp_q), bit_value)
 
-    true_b = b
+    A = true_A
     print('=' * 50)
     print('true A:', [[float(x) for x in row] for row in A])
     print('true x:', [float(x) for x in true_x])
@@ -173,4 +175,10 @@ def solve_qubo(Dimension, qubits, A, b, true_x, scale):
     print(sampleset_pd_agg.sort_values('num_occurrences', ascending=False))
     print('=' * 50)
 
-    return [x / scale for x in lowest_x]
+    results = [(lowest_x, np.linalg.norm(A @ lowest_x - true_b), 'lowest energy state x'),
+               (frequent_x, np.linalg.norm(A @ frequent_x - true_b), 'most frequently occurring x'),
+               (expected_x, np.linalg.norm(A @ expected_x - true_b), 'expected x (from real value)')]
+    best_res = [res[0] for res in results if res[1] == min([tup[1] for tup in results])][0]
+    print(f'best result: {[res[2] for res in results if res[1] == min([tup[1] for tup in results])][0]}')
+
+    return [x / scale for x in best_res]
